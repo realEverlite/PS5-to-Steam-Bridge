@@ -1,0 +1,7 @@
+{
+  "npssoToken": "YOUR_NPSSO_TOKEN_HERE",
+  "pollingIntervalSeconds": 300,
+  "asfBotName": "PS5Bot",
+  "asfIpcUrl": "http://localhost:1242/Api/Command",
+  "psnClientAuth": "Basic MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A="
+}

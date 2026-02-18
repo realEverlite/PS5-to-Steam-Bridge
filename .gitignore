@@ -1,0 +1,27 @@
+# Configuration (contains secrets)
+SteamPSN.json
+
+# Debug / diagnostic files
+sony_error.html
+presence_debug.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
