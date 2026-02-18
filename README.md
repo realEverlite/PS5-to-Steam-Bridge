@@ -26,6 +26,7 @@ Run the script:
 
 Bash
 python psn_bridge.py
+
 Security Note ⚠️
 Never upload your SteamPSN.json file to GitHub! It contains your private session tokens. This project includes a .gitignore file to help prevent accidental uploads.
 
