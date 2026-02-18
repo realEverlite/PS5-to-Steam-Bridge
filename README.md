@@ -28,8 +28,8 @@ PS5 Game Activity ──► Sony PSN API ──► psn_bridge.py ──► ASF I
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/SteamPSN.git
-   cd SteamPSN
+   git clone https://github.com/realEverlite/PS5-to-Steam-Bridge.git
+cd PS5-to-Steam-Bridge
    ```
 
 2. **Install dependencies**
