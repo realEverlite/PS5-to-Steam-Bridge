@@ -1,4 +1,5 @@
 # PSN-to-Steam Status Bridge
+[![Code Quality](https://github.com/realEverlite/PS5-to-Steam-Bridge/actions/workflows/lint.yml/badge.svg)](https://github.com/realEverlite/PS5-to-Steam-Bridge/actions)
 
 Show your PlayStation 5 game activity on your Steam profile — automatically.
 
