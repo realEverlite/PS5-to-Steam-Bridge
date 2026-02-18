@@ -255,6 +255,7 @@ def main() -> None:
     config = load_config()
     npsso = config["npssoToken"]
     poll_interval = config.get("pollingIntervalSeconds", DEFAULT_POLL_INTERVAL)
+    asf_bot_name = config.get("asfBotName", ASF_BOT_NAME)
 
     access_token: str | None = None
     last_game: str | None = None  # Previously detected game title
@@ -280,10 +281,10 @@ def main() -> None:
             if current_game != last_game:
                 if current_game:
                     log.info("Status changed: now playing '%s'", current_game)
-                    send_asf_command(f"play {ASF_BOT_NAME} PS5: {current_game}")
+                    send_asf_command(f"play {asf_bot_name} PS5: {current_game}")
                 else:
                     log.info("No game active — sending resume to ASF.")
-                    send_asf_command(f"resume {ASF_BOT_NAME}")
+                    send_asf_command(f"resume {asf_bot_name}")
                 last_game = current_game
             else:
                 status = current_game or "offline"
