@@ -35,20 +35,15 @@ DEFAULT_ASF_BOT_NAME = "PS5Bot"
 DEFAULT_POLL_INTERVAL = 300  # seconds (5 minutes)
 
 DEFAULT_PSN_CLIENT_AUTH = (
-    "Basic "
-    "MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A="
+    "Basic " "MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A="
 )
 
 # ---------------------------------------------------------------------------
 # Sony API Constants
 # ---------------------------------------------------------------------------
 
-SONY_AUTH_URL = (
-    "https://ca.account.sony.com/api/authz/v3/oauth/authorize"
-)
-SONY_TOKEN_URL = (
-    "https://ca.account.sony.com/api/authz/v3/oauth/token"
-)
+SONY_AUTH_URL = "https://ca.account.sony.com/api/authz/v3/oauth/authorize"
+SONY_TOKEN_URL = "https://ca.account.sony.com/api/authz/v3/oauth/token"
 PSN_PRESENCE_URL = (
     "https://m.np.playstation.com/api/userProfile/v1"
     "/internal/users/me/basicPresences?type=primary"
@@ -113,8 +108,7 @@ def load_config() -> dict:
             file_config = json.load(fh)
     else:
         log.info(
-            "No config file found at %s — using environment "
-            "variables only.",
+            "No config file found at %s — using environment " "variables only.",
             CONFIG_PATH,
         )
 
@@ -147,12 +141,8 @@ def load_config() -> dict:
     return {
         "npssoToken": npsso,
         "pollingIntervalSeconds": poll_interval,
-        "asfBotName": _get(
-            ENV_ASF_BOT_NAME, "asfBotName", DEFAULT_ASF_BOT_NAME
-        ),
-        "asfIpcUrl": _get(
-            ENV_ASF_IPC_URL, "asfIpcUrl", DEFAULT_ASF_IPC_URL
-        ),
+        "asfBotName": _get(ENV_ASF_BOT_NAME, "asfBotName", DEFAULT_ASF_BOT_NAME),
+        "asfIpcUrl": _get(ENV_ASF_IPC_URL, "asfIpcUrl", DEFAULT_ASF_IPC_URL),
         "psnClientAuth": _get(
             ENV_PSN_CLIENT_AUTH, "psnClientAuth", DEFAULT_PSN_CLIENT_AUTH
         ),
@@ -198,8 +188,7 @@ def obtain_access_token(npsso: str, psn_client_auth: str) -> str:
         error_file = SCRIPT_DIR / "sony_error.html"
         error_file.write_text(resp.text, encoding="utf-8")
         log.error(
-            "Expected status 302, got %d. Response saved to '%s'. "
-            "Excerpt:\n%s",
+            "Expected status 302, got %d. Response saved to '%s'. " "Excerpt:\n%s",
             resp.status_code,
             error_file,
             resp.text[:500],
@@ -243,9 +232,7 @@ def obtain_access_token(npsso: str, psn_client_auth: str) -> str:
     token_json = resp.json()
     access_token = token_json.get("access_token")
     if not access_token:
-        raise RuntimeError(
-            f"access_token missing from response: {token_json}"
-        )
+        raise RuntimeError(f"access_token missing from response: {token_json}")
 
     expires_in = token_json.get("expires_in", "?")
     log.info("Access token received (valid for %s s).", expires_in)
@@ -320,9 +307,7 @@ def send_asf_command(command: str, asf_ipc_url: str) -> None:
     headers = {"Content-Type": "application/json"}
 
     try:
-        resp = requests.post(
-            asf_ipc_url, json=payload, headers=headers, timeout=10
-        )
+        resp = requests.post(asf_ipc_url, json=payload, headers=headers, timeout=10)
         resp.raise_for_status()
         result = resp.json()
         log.info("ASF response: %s", result.get("Result", result))
@@ -361,22 +346,15 @@ def main() -> None:
         try:
             # Obtain or refresh the access token
             if access_token is None:
-                access_token = obtain_access_token(
-                    npsso, psn_client_auth
-                )
+                access_token = obtain_access_token(npsso, psn_client_auth)
 
             # Query the current game status
             try:
                 current_game = get_current_game(access_token)
             except requests.HTTPError as exc:
-                if (
-                    exc.response is not None
-                    and exc.response.status_code == 401
-                ):
+                if exc.response is not None and exc.response.status_code == 401:
                     log.warning("Access token expired — refreshing ...")
-                    access_token = obtain_access_token(
-                        npsso, psn_client_auth
-                    )
+                    access_token = obtain_access_token(npsso, psn_client_auth)
                     current_game = get_current_game(access_token)
                 else:
                     raise
@@ -394,9 +372,7 @@ def main() -> None:
                     )
                 else:
                     log.info("No game active — sending resume to ASF.")
-                    send_asf_command(
-                        f"resume {asf_bot_name}", asf_ipc_url
-                    )
+                    send_asf_command(f"resume {asf_bot_name}", asf_ipc_url)
                 last_game = current_game
             else:
                 log.info(
