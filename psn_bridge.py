@@ -1,11 +1,16 @@
 """
-psn_bridge.py – PlayStation 5 → Steam Status Bridge via ArchiSteamFarm
+psn_bridge.py - PlayStation 5 to Steam Status Bridge via ArchiSteamFarm
 
-Liest den npssoToken aus der ASF-Konfiguration, authentifiziert sich bei Sony,
-fragt alle 5 Minuten den PS5-Spielstatus ab und überträgt ihn per IPC an ASF.
+Reads the npssoToken from a local config file, authenticates with Sony's
+OAuth v3 API, polls the PS5 game presence every few minutes, and forwards
+the currently playing game title to ArchiSteamFarm (ASF) via its IPC API.
+
+When a game is detected, ASF sets the Steam custom game name to
+"PS5: <game title>". When no game is active, ASF resumes normal operation.
 """
 
 import json
+import os
 import time
 import logging
 import sys
@@ -14,29 +19,41 @@ from pathlib import Path
 import requests
 
 # ---------------------------------------------------------------------------
-# Konfiguration
+# Configuration
 # ---------------------------------------------------------------------------
-CONFIG_PATH = Path(r"C:/Users/Administrator/Documents/Github/ASF/ASF/config/SteamPSN.json")
+SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = SCRIPT_DIR / "SteamPSN.json"
 ASF_IPC_URL = "http://localhost:1242/Api/Command"
 ASF_BOT_NAME = "PS5Bot"
 
+# Sony OAuth v3 endpoints
 SONY_AUTH_URL = "https://ca.account.sony.com/api/authz/v3/oauth/authorize"
 SONY_TOKEN_URL = "https://ca.account.sony.com/api/authz/v3/oauth/token"
-PSN_PRESENCE_URL = "https://m.np.playstation.com/api/userProfile/v1/internal/users/me/basicPresences?type=primary"
 
-# OAuth-Client-Daten (offizieller PSN-Client)
+# PSN presence endpoint (uses "me" to refer to the authenticated user)
+PSN_PRESENCE_URL = (
+    "https://m.np.playstation.com/api/userProfile/v1/internal/users/me"
+    "/basicPresences?type=primary"
+)
+
+# Official PSN mobile client credentials
 CLIENT_ID = "09515159-7237-4370-9b40-3806e67c0891"
 REDIRECT_URI = "com.scee.psxandroid.scecompcall://redirect"
 SCOPE = "psn:mobile.v2.core psn:clientapp"
 
-# User-Agent (iPhone), damit Sony den Request akzeptiert
+# Base64-encoded Basic Auth header value (client_id:client_secret)
+BASIC_AUTH = (
+    "Basic MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A="
+)
+
+# iPhone User-Agent so Sony accepts the request as a mobile client
 USER_AGENT = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 15_7 like Mac OS X) "
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.7 "
     "Mobile/15E148 Safari/604.1"
 )
 
-DEFAULT_POLL_INTERVAL = 300  # Sekunden (5 Min.)
+DEFAULT_POLL_INTERVAL = 300  # seconds (5 minutes)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -50,20 +67,20 @@ log = logging.getLogger("psn_bridge")
 
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helper Functions
 # ---------------------------------------------------------------------------
 
 def load_config() -> dict:
-    """Lädt die JSON-Konfigurationsdatei und gibt sie als Dictionary zurück."""
+    """Load and validate the JSON configuration file located next to this script."""
     if not CONFIG_PATH.exists():
-        log.error("Konfigurationsdatei nicht gefunden: %s", CONFIG_PATH)
+        log.error("Configuration file not found: %s", CONFIG_PATH)
         sys.exit(1)
 
     with open(CONFIG_PATH, encoding="utf-8") as fh:
         config = json.load(fh)
 
     if "npssoToken" not in config:
-        log.error("'npssoToken' fehlt in der Konfiguration.")
+        log.error("'npssoToken' is missing from the configuration file.")
         sys.exit(1)
 
     return config
@@ -71,15 +88,17 @@ def load_config() -> dict:
 
 def obtain_access_token(npsso: str) -> str:
     """
-    Tauscht den npssoToken in zwei Schritten gegen einen OAuth access_token:
+    Exchange an npssoToken for an OAuth access_token in two steps:
 
-    1. npsso → grant_code (über OAuth authorize mit Cookie)
-    2. grant_code → access_token
+    1. Send the npsso cookie to the authorize endpoint to obtain a grant code
+       (via a 302 redirect).
+    2. Exchange the grant code for an access_token at the token endpoint
+       using Basic Auth.
     """
-    # --- Schritt 1: NPSSO-Cookie → grant_code via OAuth authorize ---------
-    log.info("Schritt 1/2: Fordere grant_code über OAuth authorize an …")
+    # --- Step 1: npsso cookie -> grant code via OAuth authorize redirect ---
+    log.info("Step 1/2: Requesting grant code via OAuth authorize ...")
 
-    sso_params = {
+    auth_params = {
         "access_type": "offline",
         "response_type": "code",
         "client_id": CLIENT_ID,
@@ -89,39 +108,40 @@ def obtain_access_token(npsso: str) -> str:
 
     resp = requests.get(
         SONY_AUTH_URL,
-        params=sso_params,
+        params=auth_params,
         cookies={"npsso": npsso},
         headers={"User-Agent": USER_AGENT},
-        allow_redirects=False,
+        allow_redirects=False,  # Capture the 302 redirect to extract the code
         timeout=30,
     )
 
-    # Kein 302-Redirect → Antwort zur Diagnose ausgeben und abbrechen
+    # If Sony doesn't redirect, dump the response for diagnosis
     if resp.status_code != 302:
-        error_file = Path("sony_error.html")
+        error_file = SCRIPT_DIR / "sony_error.html"
         error_file.write_text(resp.text, encoding="utf-8")
         log.error(
-            "Erwarteter Status 302, erhalten: %d. "
-            "Antwort in '%s' gespeichert. Body-Auszug:\n%s",
+            "Expected status 302, got %d. "
+            "Response saved to '%s'. Excerpt:\n%s",
             resp.status_code,
-            error_file.resolve(),
+            error_file,
             resp.text[:500],
         )
         sys.exit(1)
 
-    # Der Redirect-Header enthält den grant_code
+    # Extract the grant code from the Location header
     location = resp.headers.get("Location", "")
     if "code=" not in location:
         raise RuntimeError(
-            f"grant_code konnte nicht extrahiert werden. Status={resp.status_code}, "
+            f"Could not extract grant code. Status={resp.status_code}, "
             f"Location={location!r}"
         )
 
     grant_code = location.split("code=")[1].split("&")[0]
-    log.info("grant_code erhalten (%s…)", grant_code[:12])
+    log.info("Grant code received (%s...)", grant_code[:12])
 
-    # --- Schritt 2: grant_code → access_token -----------------------------
-    log.info("Schritt 2/2: Tausche grant_code gegen access_token …")
+    # --- Step 2: grant code -> access_token via token endpoint -------------
+    log.info("Step 2/2: Exchanging grant code for access token ...")
+
     token_data = {
         "grant_type": "authorization_code",
         "code": grant_code,
@@ -129,79 +149,90 @@ def obtain_access_token(npsso: str) -> str:
         "token_format": "jwt",
     }
     token_headers = {
-        "Authorization": "Basic MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A=",
+        "Authorization": BASIC_AUTH,
         "User-Agent": USER_AGENT,
         "Content-Type": "application/x-www-form-urlencoded",
     }
 
-    resp = requests.post(SONY_TOKEN_URL, data=token_data, headers=token_headers, timeout=30)
+    resp = requests.post(
+        SONY_TOKEN_URL, data=token_data, headers=token_headers, timeout=30
+    )
     resp.raise_for_status()
 
     token_json = resp.json()
     access_token = token_json.get("access_token")
     if not access_token:
-        raise RuntimeError(f"access_token fehlt in der Antwort: {token_json}")
+        raise RuntimeError(f"access_token missing from response: {token_json}")
 
     expires_in = token_json.get("expires_in", "?")
-    log.info("access_token erhalten (gültig für %s s).", expires_in)
+    log.info("Access token received (valid for %s s).", expires_in)
     return access_token
 
 
 def get_current_game(access_token: str) -> str | None:
     """
-    Fragt den Presence-Status ab und gibt den Spielnamen zurück,
-    oder None wenn gerade kein Spiel läuft.
+    Query the PSN presence API and return the name of the currently
+    running game, or None if the console is offline / no game is active.
+
+    Expected JSON structure from Sony:
+        {
+            "basicPresence": {
+                "primaryPlatformInfo": { "onlineStatus": "online", ... },
+                "gameTitleInfoList": [
+                    { "titleName": "Game Name", ... }
+                ]
+            }
+        }
     """
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json",
-        "Accept-Language": "de-DE",
-        "Country": "DE",
+        "Accept-Language": "en-US",
         "User-Agent": USER_AGENT,
     }
 
     resp = requests.get(PSN_PRESENCE_URL, headers=headers, timeout=30)
 
-    # Fehler abfangen und Response-Body zur Diagnose ausgeben
+    # Log the full response body on error before raising
     if not resp.ok:
         log.error(
-            "Presence-Abfrage fehlgeschlagen: Status %d\nBody:\n%s",
+            "Presence request failed with status %d\nBody:\n%s",
             resp.status_code,
             resp.text[:1000],
         )
         resp.raise_for_status()
 
     data = resp.json()
-    log.debug("Presence-Antwort: %s", json.dumps(data, indent=2))
+    log.debug("Presence response: %s", json.dumps(data, indent=2))
 
-    # Struktur: { "basicPresence": { "gameTitleInfoList": [...], "primaryPlatformInfo": {...} } }
     presence = data.get("basicPresence", {})
 
-    # Spiel aktiv?
+    # Check if a game is currently running
     title_list = presence.get("gameTitleInfoList", [])
     if title_list:
         title_name = title_list[0].get("titleName")
         if title_name:
-            log.info("Spiel gefunden: %s", title_name)
+            log.info("Game detected: %s", title_name)
             return title_name
 
-    # Kein Spiel, aber online?
+    # Console is online but no game is running
     platform_info = presence.get("primaryPlatformInfo", {})
     online_status = platform_info.get("onlineStatus", "")
     if online_status == "online":
-        log.info("Konsole online, aber kein Spiel aktiv.")
-        return "Online (Kein Spiel)"
+        log.info("Console online, but no game is active.")
+        return None
 
-    # Offline → Debug-Dump schreiben
-    with open("presence_debug.json", "w", encoding="utf-8") as f:
+    # Offline — write debug dump for troubleshooting
+    debug_file = SCRIPT_DIR / "presence_debug.json"
+    with open(debug_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
-    log.info("Kein Spiel erkannt – Antwort in presence_debug.json gespeichert.")
+    log.info("No game detected — response saved to %s", debug_file)
 
     return None
 
 
 def send_asf_command(command: str) -> None:
-    """Sendet einen IPC-Befehl an ArchiSteamFarm."""
+    """Send an IPC command to ArchiSteamFarm."""
     payload = {"Command": command}
     headers = {"Content-Type": "application/json"}
 
@@ -209,64 +240,63 @@ def send_asf_command(command: str) -> None:
         resp = requests.post(ASF_IPC_URL, json=payload, headers=headers, timeout=10)
         resp.raise_for_status()
         result = resp.json()
-        log.info("ASF-Antwort: %s", result.get("Result", result))
+        log.info("ASF response: %s", result.get("Result", result))
     except requests.RequestException as exc:
-        log.warning("ASF-IPC-Fehler: %s", exc)
+        log.warning("ASF IPC error: %s", exc)
 
 
 # ---------------------------------------------------------------------------
-# Hauptschleife
+# Main Loop
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    log.info("=== PSN → Steam Bridge gestartet ===")
+    log.info("=== PSN -> Steam Bridge started ===")
 
     config = load_config()
     npsso = config["npssoToken"]
     poll_interval = config.get("pollingIntervalSeconds", DEFAULT_POLL_INTERVAL)
 
     access_token: str | None = None
-    last_game: str | None = None  # letzter erkannter Spielname
+    last_game: str | None = None  # Previously detected game title
 
     while True:
         try:
-            # ----- Token holen / erneuern -----
+            # Obtain or refresh the access token
             if access_token is None:
                 access_token = obtain_access_token(npsso)
 
-            # ----- Spielstatus abfragen -----
+            # Query the current game status
             try:
                 current_game = get_current_game(access_token)
             except requests.HTTPError as exc:
                 if exc.response is not None and exc.response.status_code == 401:
-                    log.warning("access_token abgelaufen – erneuere …")
+                    log.warning("Access token expired — refreshing ...")
                     access_token = obtain_access_token(npsso)
                     current_game = get_current_game(access_token)
                 else:
                     raise
 
-            # ----- Statusänderung erkennen und an ASF senden -----
+            # Detect status changes and send commands to ASF
             if current_game != last_game:
                 if current_game:
-                    log.info("Spiel erkannt: %s", current_game)
+                    log.info("Status changed: now playing '%s'", current_game)
                     send_asf_command(f"play {ASF_BOT_NAME} PS5: {current_game}")
                 else:
-                    log.info("Kein Spiel mehr aktiv – sende resume.")
+                    log.info("No game active — sending resume to ASF.")
                     send_asf_command(f"resume {ASF_BOT_NAME}")
                 last_game = current_game
             else:
                 status = current_game or "offline"
-                log.info("Keine Änderung (Status: %s).", status)
+                log.info("No change (status: %s).", status)
 
         except requests.RequestException as exc:
-            log.error("Netzwerkfehler: %s", exc)
-            # Bei schwerwiegendem Fehler Token zurücksetzen
-            access_token = None
+            log.error("Network error: %s", exc)
+            access_token = None  # Force token refresh on next iteration
         except Exception as exc:
-            log.error("Unerwarteter Fehler: %s", exc, exc_info=True)
+            log.error("Unexpected error: %s", exc, exc_info=True)
             access_token = None
 
-        log.info("Nächste Abfrage in %d Sekunden …", poll_interval)
+        log.info("Next check in %d seconds ...", poll_interval)
         time.sleep(poll_interval)
 
 
