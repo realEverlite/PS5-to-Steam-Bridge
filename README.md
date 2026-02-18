@@ -110,6 +110,9 @@ Currently In-Game
 PS5: Marvel's Spider-Man 2
 ```
 
+<img width="295" height="69" alt="{D0594BA1-FAC2-4565-BA64-797E53175C7B}" src="https://github.com/user-attachments/assets/5cdd9cc5-d4a6-4ced-acdf-eafade138d2e" />
+
+
 ## Troubleshooting
 
 - **`sony_error.html` created** — The OAuth flow failed. Usually means your `npssoToken` has expired.
