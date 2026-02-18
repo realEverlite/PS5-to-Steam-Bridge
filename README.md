@@ -1,4 +1,4 @@
-PS5-to-Steam Presence Bridge 🎮 🚀
+# PS5-to-Steam Presence Bridge 🎮 🚀
 Sync your PlayStation 5 game activity to your Steam profile status in real-time using ArchiSteamFarm (ASF).
 
 # How it works
