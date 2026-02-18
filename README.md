@@ -31,5 +31,16 @@ This script polls the PlayStation Network (PSN) API for your current activity an
 ## Security Note ⚠️
 **Never** upload your `SteamPSN.json` to GitHub! This project includes a `.gitignore` to prevent accidental uploads.
 
-## Credits
-Built using **"Vibe Coding"** with AI (Gemini, ChatGPT, and Claude).
+## Acknowledgments & Credits 🏆
+
+### Core Tools
+- **[ArchiSteamFarm (ASF)](https://github.com/JustArchiNET/ArchiSteamFarm):** The powerhouse that handles the Steam communication. This script wouldn't be possible without Archi's incredible work on ASF and its IPC interface.
+- **[Requests Library](https://requests.readthedocs.io/):** For making HTTP requests to Sony and ASF a breeze.
+
+### Project Origin
+This project was born out of a desire to see PS5 activity on Steam and was built using **"Vibe Coding"** – a collaborative development process between a human "architect" and AI assistants:
+- **Gemini (Google)**
+- **ChatGPT (OpenAI)**
+- **Claude (Anthropic)**
+
+Special thanks to the open-source community for documenting the PSN API endpoints!
