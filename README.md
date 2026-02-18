@@ -119,3 +119,16 @@ PS5: Marvel's Spider-Man 2
 ## License
 
 MIT
+
+## Future Plans
+
+- **Xbox & Nintendo Support:** Expand the bridge to support tracking activity from Xbox Live and Nintendo Network, creating a truly universal console-to-Steam presence.
+- **Standalone Mode:** Remove the dependency on ArchiSteamFarm (ASF) by implementing a direct Steam network connection using a dedicated Python Steam library.
+- **Web UI / Dashboard:** Create a simple local web interface to manage configuration (like the `npssoToken` and polling intervals) without having to edit JSON files manually.
+- **Standalone Executable:** Provide pre-compiled `.exe` (Windows) and binary (Linux) releases so users can run the bridge without needing to install Python.
+
+## Acknowledgments
+
+- Huge thanks to **[JustArchiNET](https://github.com/JustArchiNET/ArchiSteamFarm)** for creating ArchiSteamFarm, which makes the IPC communication and Steam presence management incredibly easy and reliable.
+- Special thanks to the community around PSN API reverse engineering (such as **[Tustin / psn-php](https://github.com/Tustin/psn-php)**), whose documentation made authenticating with Sony's OAuth v3 flow possible.
+- This project was passionately **"vibecoded"** with the AI assistance of Gemini, ChatGPT, and Claude.
