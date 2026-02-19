@@ -104,7 +104,7 @@ All values can be set via **environment variable** or **JSON config file**. Envi
 
 ## How It Looks on Steam
 
-When you're playing a game on PS5, your Steam profile will show:
+When you're playing a game on PS5, your Steam profile will show for example:
 
 ```
 Currently In-Game
