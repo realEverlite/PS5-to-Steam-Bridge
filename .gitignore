@@ -1,27 +1,25 @@
-# Configuration (contains secrets)
-SteamPSN.json
-
-# Debug / diagnostic files
-sony_error.html
-presence_debug.json
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-*.egg
+﻿# Python
 .venv/
-venv/
-env/
+__pycache__/
+*.pyc
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Local runtime data / secrets
+config.json
+steam_session/
 
-# OS
+# Build output
+build/
+dist/
+*.spec
+
+# Node runtime
+node-steam-session-master/node_modules/
+
+# OS/editor
 Thumbs.db
 .DS_Store
+.vscode/
+.idea/
+
+# Local notes
+chatgpt.md
