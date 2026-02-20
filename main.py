@@ -124,6 +124,14 @@ class SteamWorker:
             return False
 
         try:
+            popen_kwargs = {}
+            if os.name == "nt":
+                # Hide backend console window on Windows.
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                popen_kwargs["startupinfo"] = startupinfo
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
             self.node_proc = subprocess.Popen(
                 [node_exe, self.node_backend_path],
                 cwd=self.node_backend_cwd,
@@ -133,6 +141,7 @@ class SteamWorker:
                 text=True,
                 encoding="utf-8",
                 bufsize=1,
+                **popen_kwargs
             )
         except Exception as e:
             logger.error(f"Worker: Failed to start Node backend: {e}")
