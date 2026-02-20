@@ -101,22 +101,6 @@ Output EXE:
 
 Notes:`n- `build_exe.ps1` bundles `node.exe` automatically via `--add-binary` for standalone usage.`n- `main.py` resolves bundled Node runtime at `node/node.exe` when frozen.
 
-## GitHub Release
-
-1. Create a tag:
-```powershell
-git tag v2.0.0
-git push origin v2.0.0
-```
-
-2. On GitHub:
-- Open **Releases** -> **Draft a new release**
-- Select tag `v2.0.0`
-- Title: `PS5 to Steam Bridge v2.0.0`
-- Add changelog notes
-- Upload zipped build artifacts (e.g. `PS5-to-Steam-Bridge-v2-win64.zip`)
-- Publish
-
 ## Runtime Notes
 
 - First login may request Steam Guard code.
