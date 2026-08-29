@@ -10,23 +10,13 @@ import time
 import webbrowser
 
 import customtkinter as ctk
-import requests
 from tkinter import messagebox
 
-from bridge_util import normalize_npsso, presence_title
+import credstore
+import psn
+from bridge_util import normalize_npsso
 
 APP_NAME = "PS5-to-Steam-Bridge"
-SONY_AUTH_URL = "https://ca.account.sony.com/api/authz/v3/oauth/authorize"
-SONY_TOKEN_URL = "https://ca.account.sony.com/api/authz/v3/oauth/token"
-PSN_PRESENCE_URL = "https://m.np.playstation.com/api/userProfile/v1/internal/users/me/basicPresences?type=primary"
-CLIENT_ID = "09515159-7237-4370-9b40-3806e67c0891"
-REDIRECT_URI = "com.scee.psxandroid.scecompcall://redirect"
-SCOPE = "psn:mobile.v2.core psn:clientapp"
-USER_AGENT = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 15_7 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.7 Mobile/15E148 Safari/604.1"
-)
-PSN_CLIENT_AUTH = "Basic MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A="
 
 logger = logging.getLogger("Bridge")
 ctk.set_appearance_mode("dark")
@@ -417,7 +407,6 @@ class BridgeApp(ctk.CTk):
     def __init__(self, data_dir):
         super().__init__()
         self.data_dir = data_dir
-        self.config_path = os.path.join(data_dir, "config.json")
         self.steam_initialized = False
         self.psn_initialized = False
         self.psn_verifying = False
@@ -691,35 +680,30 @@ class BridgeApp(ctk.CTk):
         return normalize_npsso(self.npsso_token_entry.get())
 
     def load_config(self):
-        if not os.path.exists(self.config_path):
-            return
-        try:
-            with open(self.config_path, encoding="utf-8") as handle:
-                config = json.load(handle)
-            self.steam_user = config.get("steam_user", "")
-            self.steam_pass = config.get("steam_pass", "")
-            self.steam_refresh_token = config.get("steam_refresh_token", "")
-            npsso = config.get("npsso", "")
-            if npsso:
-                self.npsso_token_entry.insert(0, npsso)
-            if self.steam_user:
-                self.steam_user_entry.delete(0, "end")
-                self.steam_user_entry.insert(0, self.steam_user)
-        except Exception as exc:
-            logger.error("Could not read config: %s", exc)
+        credstore.migrate_plaintext_config(self.data_dir)
+        public = credstore.load_public(self.data_dir)
+        secrets = credstore.load_secrets(self.data_dir)
+        self.steam_user = public.get("steam_user", "")
+        self.steam_refresh_token = secrets.get("steam_refresh_token", "")
+        self.steam_pass = "" if self.steam_refresh_token else secrets.get("steam_pass", "")
+        npsso = secrets.get("npsso", "")
+        if npsso:
+            self.npsso_token_entry.insert(0, npsso)
+        if self.steam_user:
+            self.steam_user_entry.delete(0, "end")
+            self.steam_user_entry.insert(0, self.steam_user)
 
     def _internal_save(self):
-        config = {
-            "steam_user": self.steam_user,
-            "steam_refresh_token": self.steam_refresh_token,
-            "npsso": self._npsso(),
-        }
-        if not self.steam_refresh_token and self.steam_pass:
-            config["steam_pass"] = self.steam_pass
         try:
-            with open(self.config_path, "w", encoding="utf-8") as handle:
-                json.dump(config, handle, indent=4, ensure_ascii=False)
-        except Exception as exc:
+            credstore.save_public(self.data_dir, {"steam_user": self.steam_user})
+            secrets = {
+                "npsso": self._npsso(),
+                "steam_refresh_token": self.steam_refresh_token,
+            }
+            if not self.steam_refresh_token and self.steam_pass:
+                secrets["steam_pass"] = self.steam_pass
+            credstore.save_secrets(self.data_dir, secrets)
+        except OSError as exc:
             logger.error("Could not save config: %s", exc)
 
     def poll_worker_events(self):
@@ -800,35 +784,9 @@ class BridgeApp(ctk.CTk):
         self.set_psn_state("wait", "Checking token…")
         threading.Thread(target=self._threaded_verify_psn, args=(npsso,), daemon=True).start()
 
-    def _psn_auth(self, npsso):
-        params = {
-            "access_type": "offline",
-            "response_type": "code",
-            "client_id": CLIENT_ID,
-            "redirect_uri": REDIRECT_URI,
-            "scope": SCOPE,
-        }
-        resp = requests.get(
-            SONY_AUTH_URL, params=params, cookies={"npsso": npsso},
-            headers={"User-Agent": USER_AGENT}, allow_redirects=False, timeout=30,
-        )
-        if resp.status_code != 302:
-            return None
-        location = resp.headers.get("Location", "")
-        if "code=" not in location:
-            return None
-        grant = location.split("code=")[1].split("&")[0]
-        resp = requests.post(
-            SONY_TOKEN_URL,
-            data={"grant_type": "authorization_code", "code": grant, "redirect_uri": REDIRECT_URI, "token_format": "jwt"},
-            headers={"Authorization": PSN_CLIENT_AUTH, "User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded"},
-            timeout=30,
-        )
-        return resp.json().get("access_token")
-
     def _threaded_verify_psn(self, npsso):
         try:
-            token = self._psn_auth(npsso)
+            token = psn.authenticate(npsso)
             if token:
                 self.psn_access_token = token
                 self.psn_initialized = True
@@ -857,22 +815,18 @@ class BridgeApp(ctk.CTk):
         while self.is_bridge_running:
             try:
                 if self.psn_access_token:
-                    headers = {
-                        "Authorization": f"Bearer {self.psn_access_token}",
-                        "Accept": "application/json",
-                        "Accept-Language": "en-US",
-                        "User-Agent": USER_AGENT,
-                    }
-                    resp = requests.get(PSN_PRESENCE_URL, headers=headers, timeout=30)
-                    if resp.status_code == 401:
-                        self.psn_access_token = self._psn_auth(self._npsso())
+                    status, title = psn.current_title(self.psn_access_token)
+                    if status == 401:
+                        self.psn_access_token = psn.authenticate(self._npsso())
                         if not self.psn_access_token:
                             self.psn_initialized = False
                             self.after(0, lambda: self.set_psn_state("err", "Token expired. Paste a fresh npsso."))
                             self.after(0, self._stop_bridge_ui)
                             break
                         continue
-                    title = presence_title(resp.json())
+                    if status != 200:
+                        time.sleep(10)
+                        continue
                     if not self.is_bridge_running:
                         break
                     self.after(0, self.set_presence, title)
@@ -950,6 +904,7 @@ class BridgeApp(ctk.CTk):
 def main():
     data_dir = app_data_dir()
     migrate_legacy_data(data_dir)
+    credstore.migrate_plaintext_config(data_dir)
     setup_logging(data_dir)
     app = BridgeApp(data_dir)
     app.mainloop()

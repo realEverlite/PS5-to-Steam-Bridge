@@ -5,6 +5,8 @@ __pycache__/
 
 # Local runtime data / secrets
 config.json
+secrets.bin
+secrets.json
 steam_session/
 
 # Build output

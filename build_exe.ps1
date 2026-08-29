@@ -11,43 +11,42 @@ function Get-SystemPython {
     throw 'Python 3.11+ is required to build. Install from https://www.python.org/downloads/ and enable "Add python.exe to PATH".'
 }
 
+# Pinned. Do not float to "latest LTS".
+$NodeVersion = 'v22.18.0'
+$NodeSha256 = @{
+    'x64'   = 'c95d8a7e1c99e669cc08c9f1176e068c1f50847c37908fcb8c35b62482366511'
+    'arm64' = '023afb3d25c4c7d10cb6eb8a64865c347b56d4b07e6690606d021130a9192263'
+}
+
 function Get-NodeExe {
-    $existing = Get-Command node -ErrorAction SilentlyContinue
-    if ($existing) {
-        return $existing.Source
+    $nodeDir = Join-Path $PSScriptRoot '.tools\node'
+    $nodeExe = Join-Path $nodeDir 'node.exe'
+    if (Test-Path $nodeExe) {
+        $found = & $nodeExe -v
+        if ($found -eq $NodeVersion) {
+            return $nodeExe
+        }
     }
 
-    $candidates = @(
-        (Join-Path $PSScriptRoot '.tools\node\node.exe'),
-        (Join-Path $env:ProgramFiles 'nodejs\node.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} 'nodejs\node.exe')
-    )
-    foreach ($path in $candidates) {
-        if ($path -and (Test-Path $path)) {
-            return $path
-        }
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
+    $expected = $NodeSha256[$arch]
+    if (-not $expected) {
+        throw "No pinned Node checksum for $arch"
     }
 
     $toolsDir = Join-Path $PSScriptRoot '.tools'
-    $nodeDir = Join-Path $toolsDir 'node'
     $zipPath = Join-Path $toolsDir 'node.zip'
     New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
 
-    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
-    $version = 'v22.18.0'
-    try {
-        $index = Invoke-RestMethod -Uri 'https://nodejs.org/dist/index.json'
-        $lts = @($index | Where-Object { $_.lts })[0]
-        if ($lts.version) {
-            $version = $lts.version
-        }
-    } catch {
-        Write-Host "Could not query latest Node LTS, using $version"
-    }
-
-    $url = "https://nodejs.org/dist/$version/node-$version-win-$arch.zip"
-    Write-Host "Downloading portable Node $version ($arch)..."
+    $url = "https://nodejs.org/dist/$NodeVersion/node-$NodeVersion-win-$arch.zip"
+    Write-Host "Downloading pinned Node $NodeVersion ($arch)..."
     Invoke-WebRequest -Uri $url -OutFile $zipPath
+
+    $actual = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) {
+        Remove-Item $zipPath -Force
+        throw "Node zip checksum mismatch. Expected $expected, got $actual"
+    }
 
     if (Test-Path $nodeDir) {
         Remove-Item $nodeDir -Recurse -Force
@@ -61,7 +60,6 @@ function Get-NodeExe {
     }
     Rename-Item $extracted.FullName $nodeDir
 
-    $nodeExe = Join-Path $nodeDir 'node.exe'
     if (-not (Test-Path $nodeExe)) {
         throw "Node download finished but node.exe is missing"
     }

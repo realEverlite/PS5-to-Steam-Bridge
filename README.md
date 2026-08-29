@@ -14,12 +14,14 @@ The app polls PlayStation presence and sets a custom Steam game name. Stop or qu
 
 | | |
 | --- | --- |
-| PlayStation | NPSSO token, stored only on this PC |
+| PlayStation | NPSSO token, stored only on this PC (encrypted on Windows) |
 | Steam | One-time login, then a saved session |
 | Windows | One EXE, no Python/Node for others |
 | Linux | Run from source |
 
 Settings live in `%APPDATA%\PS5-to-Steam-Bridge` on Windows and `~/.local/share/PS5-to-Steam-Bridge` on Linux. Replacing the EXE does not log you out.
+
+On Windows, NPSSO and Steam tokens are DPAPI-encrypted (`secrets.bin`). `config.json` only keeps the Steam account name. An older plaintext config is migrated on first start.
 
 ## Use it
 
@@ -29,7 +31,7 @@ Settings live in `%APPDATA%\PS5-to-Steam-Bridge` on Windows and `~/.local/share/
 
 ## Windows EXE
 
-Build PC needs Python 3.11+ (`Add to PATH`). The script creates the venv and downloads Node if needed. Recipients need neither.
+Build PC needs Python 3.11+ (`Add to PATH`). The script creates the venv and downloads pinned Node `v22.18.0` (SHA256-checked). Recipients need neither.
 
 ```powershell
 .\build_exe.bat
@@ -66,13 +68,23 @@ Invisible or Offline in the Steam client is overwritten while the bridge is conn
 
 ## Security
 
-Do not commit `config.json`, `steam_session/`, or the AppData / XDG folder.
+Do not commit `config.json`, `secrets.bin`, `secrets.json`, `steam_session/`, or the AppData / XDG folder.
 
 If something leaked: change your Steam password, sign out other devices, replace the NPSSO token.
 
+## Develop
+
+```powershell
+.\.venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt
+.\.venv\Scripts\python -m pytest
+.\.venv\Scripts\python -m ruff check .
+```
+
 ## Layout
 
-- `main.py` — GUI and PSN polling
+- `main.py` — GUI and orchestration
+- `psn.py` — PlayStation auth and presence
+- `credstore.py` — config + encrypted tokens
 - `bridge_util.py` — NPSSO / presence helpers
 - `steam-backend/` — Steam worker
 - `v1/` — old ASF-based version
