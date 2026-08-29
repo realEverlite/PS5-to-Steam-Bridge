@@ -13,7 +13,8 @@ dist/
 *.spec
 
 # Node runtime
-node-steam-session-master/node_modules/
+steam-backend/node_modules/
+.tools/
 
 # OS/editor
 Thumbs.db

@@ -2,7 +2,7 @@
   "name": "ps5-steam-bridge-backend",
   "version": "2.0.0",
   "private": true,
-  "description": "Node backend for PS5-to-Steam-Bridge v2",
+  "description": "Steam worker for PS5-to-Steam-Bridge",
   "license": "MIT",
   "dependencies": {
     "steam-user": "^5.2.0"
